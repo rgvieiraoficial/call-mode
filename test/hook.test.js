@@ -160,7 +160,8 @@ test('config: custom markers, rules and end text', () => {
 const envelope = (name, args) =>
   `<command-message>${name.slice(1)}</command-message>\n<command-name>${name}</command-name>\n<command-args>${args}</command-args>`;
 
-test('/call-mode turns on and blocks the prompt (no model call)', () => {
+// The prompt is never blocked: blocking shows a warning banner on a shared screen.
+test('/call-mode turns on and asks for a one-line confirmation', () => {
   const s = sandbox();
   for (const [id, prompt] of [
     ['e-1', envelope('/call-mode', 'Acme')],
@@ -168,9 +169,11 @@ test('/call-mode turns on and blocks the prompt (no model call)', () => {
     ['e-3', '/call-mode Acme'],
   ]) {
     const out = hookRaw({ session_id: id, prompt }, s.env);
-    assert.equal(out.decision, 'block', id);
-    assert.match(out.reason, /Call mode on .* with Acme/, id);
-    assert.equal(out.hookSpecificOutput, undefined, id);
+    assert.equal(out.decision, undefined, id);
+    const ctx = out.hookSpecificOutput.additionalContext;
+    assert.match(ctx, /CALL MODE ON now .* with Acme/, id);
+    assert.match(ctx, /reply with one short line/, id);
+    assert.match(ctx, /CALL MODE ACTIVE/, id);
     const state = JSON.parse(fs.readFileSync(path.join(s.stateDir, `${id}.json`), 'utf8'));
     assert.equal(state.client, 'Acme', id);
   }
@@ -178,10 +181,10 @@ test('/call-mode turns on and blocks the prompt (no model call)', () => {
 
 test('/call-mode without a name, and again while on', () => {
   const s = sandbox();
-  assert.match(hookRaw({ session_id: 'n-1', prompt: envelope('/call-mode', '') }, s.env).reason, /Call mode on \(/);
-  const again = hookRaw({ session_id: 'n-1', prompt: envelope('/call-mode', 'Acme') }, s.env);
-  assert.equal(again.decision, 'block');
-  assert.match(again.reason, /already on .*Acme/);
+  assert.match(hook({ session_id: 'n-1', prompt: envelope('/call-mode', '') }, s.env), /CALL MODE ON now \(/);
+  const again = hook({ session_id: 'n-1', prompt: envelope('/call-mode', 'Acme') }, s.env);
+  assert.match(again, /already on/);
+  assert.match(again, /Client on screen: Acme/);
 });
 
 test('/call-mode off ends the call and goes to the model for the summary', () => {
@@ -193,12 +196,12 @@ test('/call-mode off ends the call and goes to the model for the summary', () =>
   assert.equal(fs.existsSync(path.join(s.stateDir, 'o-1.json')), false);
 });
 
-test('a prompt that is only the start marker is blocked; with text it is not', () => {
+test('only the marker asks for a one-line confirmation; with text the prompt is answered normally', () => {
   const s = sandbox();
-  assert.equal(hookRaw({ session_id: 'm-1', prompt: '  [call mode: Acme] ' }, s.env).decision, 'block');
-  const out = hookRaw({ session_id: 'm-2', prompt: '[call mode: Acme] look at this bug' }, s.env);
-  assert.equal(out.decision, undefined);
-  assert.match(out.hookSpecificOutput.additionalContext, /CALL MODE ON now/);
+  assert.match(hook({ session_id: 'm-1', prompt: '  [call mode: Acme] ' }, s.env), /reply with one short line/);
+  const out = hook({ session_id: 'm-2', prompt: '[call mode: Acme] look at this bug' }, s.env);
+  assert.match(out, /CALL MODE ON now/);
+  assert.doesNotMatch(out, /reply with one short line/);
 });
 
 test('other slash commands are not mistaken for /call-mode', () => {

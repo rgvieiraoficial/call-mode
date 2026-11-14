@@ -45,7 +45,6 @@ function slashCommand(prompt: string): { args: string } | null {
 
 export interface Result {
   context?: string; // added to the prompt as context
-  block?: string; // prompt is blocked (model not called); shown to the user
 }
 
 export function handle(input: { prompt?: unknown; session_id?: unknown }, now = new Date()): Result {
@@ -75,38 +74,26 @@ export function handle(input: { prompt?: unknown; session_id?: unknown }, now = 
     };
   }
 
-  // "/call-mode [client]" or a prompt that is only the start marker: turn on and
-  // block the prompt, so the model is not called and no tokens are spent.
-  if (command || (on && on[0] === prompt.trim())) {
+  // "/call-mode [client]" or a start marker turns the mode on.
+  // When the prompt is only that, Claude just confirms in one line (cheap, and
+  // nothing odd on a shared screen; blocking the prompt would show a warning banner).
+  if (command || on) {
     const client = clean(command ? command.args : on?.[1], 40);
-    if (state) {
-      if (client && !state.client) {
-        state.client = client;
-        writeState(session, state);
-      }
-      return { block: `Call mode is already on (since ${clock(new Date(state.start), config)}${state.client ? `, ${state.client}` : ''}).` };
-    }
-    sweepOld(now.getTime());
-    if (!writeState(session, { client, start: now.toISOString() })) {
-      return { block: 'Call mode: could not save its state, so it is NOT on. Try again.' };
-    }
-    return {
-      block: `Call mode on (${clock(now, config)})${client ? ` with ${client}` : ''}. Your next prompts carry the rules. End with /call-mode off or ${endTag}.`,
-    };
-  }
-
-  if (on) {
-    const client = clean(on[1], 40);
+    const only = Boolean(command) || on?.[0] === prompt.trim();
     if (!state) {
       sweepOld(now.getTime());
       state = { client, start: now.toISOString() };
       if (!writeState(session, state)) {
-        out.push('WARNING: could not save call mode state (the status line badge will not show). The rules still apply to this message; ask the user to send the start marker again.');
+        out.push('WARNING: could not save call mode state (the status line badge will not show). The rules still apply to this message; ask the user to turn call mode on again.');
       }
-      out.push(`CALL MODE ON now (${clock(now, config)})${client ? ` with ${client}` : ''}. Active until the user sends ${endTag}.`);
-    } else if (client && !state.client) {
-      state.client = client;
-      writeState(session, state);
+      out.push(`CALL MODE ON now (${clock(now, config)})${client ? ` with ${client}` : ''}. Active until the user sends /call-mode off or ${endTag}.`);
+      if (only) out.push(`This prompt only turned call mode on: reply with one short line confirming it (e.g. "Call mode on at ${clock(now, config)}${client ? ` with ${client}` : ''}."), nothing else.`);
+    } else {
+      if (client && !state.client) {
+        state.client = client;
+        writeState(session, state);
+      }
+      if (only) out.push('Call mode was already on: reply with one short line saying so, nothing else.');
     }
   }
 
@@ -142,16 +129,10 @@ function main(): void {
     } catch {
       result = {};
     }
-    let payload: string;
-    if (result.block) {
-      payload = JSON.stringify({ decision: 'block', reason: result.block });
-    } else if (result.context) {
-      payload = JSON.stringify({
-        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: result.context },
-      });
-    } else {
-      return exit();
-    }
+    if (!result.context) return exit();
+    const payload = JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: result.context },
+    });
     try {
       process.stdout.write(payload + '\n', exit);
     } catch {

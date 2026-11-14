@@ -30,9 +30,11 @@ That's it. Try it: send `/call-mode Test`, then any message, then `/call-mode of
 | `/call-mode Acme` | Same, with the client's name (shown in the badge). |
 | `/call-mode off` | Call mode off. Claude reports start, end, duration and a summary of what it held back. |
 
-**Turning it on costs zero tokens.** The hook records the call and blocks that prompt, so the model is never called; you just see a confirmation line. Turning it off does go to the model, because only Claude can summarize what it held back.
+Turning it on is cheap: Claude only replies with a one-line confirmation.
 
-Prefer typing in the chat? The markers work too: `[call mode]`, `[call mode: Acme]` and `[end call]` (hyphens, underscores and case don't matter: `[Call-Mode]`, `[end_call]`). A prompt that is *only* the start marker is blocked like the command; a marker inside a longer prompt turns the mode on and the prompt goes through.
+Prefer typing in the chat? The markers work too: `[call mode]`, `[call mode: Acme]` and `[end call]` (hyphens, underscores and case don't matter: `[Call-Mode]`, `[end_call]`). A prompt that is *only* the start marker gets the same one-line confirmation; a marker inside a longer prompt turns the mode on and the prompt is answered normally.
+
+**Tip:** Claude Code names the terminal tab after the conversation topic, and on a shared screen the client sees it. To turn that off, set `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`.
 
 If a call stays on for more than 12 hours, Claude asks once whether you forgot to end it.
 
@@ -105,11 +107,12 @@ Your command gets the same input it always did; its output is shown after the ba
 ## Limitations
 
 - `UserPromptSubmit` hooks don't run in the VS Code / Cursor extension (a known Claude Code issue). Use the terminal.
+- `/clear` starts a new session, so it silently turns call mode off (the badge disappears). Run `/call-mode` again after clearing.
 - The rules are a strong reminder, not a filter: Claude follows them, but nothing blocks text from reaching the screen. Keep an eye on it.
 
 ## How it works
 
-- `dist/hook.js` is a `UserPromptSubmit` hook. On `/call-mode` or a start marker it writes `{ client, start }` to `~/.claude/state/call-mode/<session_id>.json` (and blocks the prompt when it was only the command or the marker); while that file exists it adds the rules as `additionalContext`; on `/call-mode off` or the end marker it deletes the file and reports the duration. `commands/call-mode.md` only exists so `/call-mode` shows up in the command menu; the hook does the work.
+- `dist/hook.js` is a `UserPromptSubmit` hook. On `/call-mode` or a start marker it writes `{ client, start }` to `~/.claude/state/call-mode/<session_id>.json`; while that file exists it adds the rules as `additionalContext`; on `/call-mode off` or the end marker it deletes the file and reports the duration. `commands/call-mode.md` only exists so `/call-mode` shows up in the command menu; the hook does the work.
 - `dist/statusline.js` reads the same file, using the `session_id` Claude Code sends on stdin.
 - The hook always exits 0 and gives up after 2 seconds, so it can never block your prompt. Session ids are validated before becoming file names, state is written atomically with `0600` permissions, symlinks are refused, and text from disk is stripped of control characters before it reaches your terminal. When a call starts, state older than 14 days is cleaned up.
 
