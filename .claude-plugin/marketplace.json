@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "yamirenato",
+  "description": "Claude Code plugins by yamirenato.",
+  "owner": {
+    "name": "yamirenato",
+    "url": "https://github.com/rgvieiraoficial"
+  },
+  "plugins": [
+    {
+      "name": "call-mode",
+      "description": "While a client watches your screen, Claude keeps internal matters out of the chat.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

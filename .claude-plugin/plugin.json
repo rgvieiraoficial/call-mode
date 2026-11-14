@@ -1,0 +1,23 @@
+{
+  "name": "call-mode",
+  "version": "0.1.0",
+  "description": "Screen-sharing guard: while a client watches your screen, Claude keeps prices, hours and other internal matters out of the chat.",
+  "author": {
+    "name": "yamirenato",
+    "url": "https://github.com/rgvieiraoficial"
+  },
+  "license": "MIT",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || exit 0; ROOT=$(printf %s \"${CLAUDE_PLUGIN_ROOT}\" | sed 's|^/\\([a-zA-Z]\\)/|\\1:/|'); node \"$ROOT/dist/hook.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

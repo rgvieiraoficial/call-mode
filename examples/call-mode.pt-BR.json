@@ -1,0 +1,16 @@
+{
+  "start": ["modo call", "call mode"],
+  "end": ["fim call", "fim da call", "end call"],
+  "label": "CALL",
+  "color": 39,
+  "staleHours": 12,
+  "locale": "pt-BR",
+  "rules": [
+    "MODO CALL ATIVO: a tela está compartilhada com o cliente. Tudo o que você escrever no chat o cliente lê.",
+    "- No chat: só o técnico e o que o cliente pode ler.",
+    "- PROIBIDO no chat: preço, valor/hora, horas usadas, saldo de pacote, negociação, opinião sobre o cliente, outros clientes, assuntos pessoais.",
+    "- O que for interno: guardar em silêncio (sem dizer no chat que guardou) e incluir no resumo depois do fim da call.",
+    "- Precisa de decisão interna? Perguntar neutro: \"tenho uma pergunta de organização pra você, fora da tela\"."
+  ],
+  "onEnd": "Agora a tela é só sua: mostrar um resumo curto do que ficou guardado durante a call (assuntos internos, horas, decisões pendentes)."
+}
