@@ -161,12 +161,14 @@ const envelope = (name, args) =>
   `<command-message>${name.slice(1)}</command-message>\n<command-name>${name}</command-name>\n<command-args>${args}</command-args>`;
 
 // The prompt is never blocked: blocking shows a warning banner on a shared screen.
-test('/call-mode turns on and asks for a one-line confirmation', () => {
+test('/call-mode:on turns on and asks for a one-line confirmation', () => {
   const s = sandbox();
   for (const [id, prompt] of [
-    ['e-1', envelope('/call-mode', 'Acme')],
-    ['e-2', envelope('/call-mode:call-mode', 'Acme')],
-    ['e-3', '/call-mode Acme'],
+    ['e-1', envelope('/call-mode:on', 'Acme')],
+    ['e-2', '/call-mode:on Acme'],
+    // 0.2 names still work
+    ['e-3', envelope('/call-mode:call-mode', 'Acme')],
+    ['e-4', '/call-mode Acme'],
   ]) {
     const out = hookRaw({ session_id: id, prompt }, s.env);
     assert.equal(out.decision, undefined, id);
@@ -179,21 +181,30 @@ test('/call-mode turns on and asks for a one-line confirmation', () => {
   }
 });
 
-test('/call-mode without a name, and again while on', () => {
+test('/call-mode:on without a name, and again while on', () => {
   const s = sandbox();
-  assert.match(hook({ session_id: 'n-1', prompt: envelope('/call-mode', '') }, s.env), /CALL MODE ON now \(/);
-  const again = hook({ session_id: 'n-1', prompt: envelope('/call-mode', 'Acme') }, s.env);
+  assert.match(hook({ session_id: 'n-1', prompt: envelope('/call-mode:on', '') }, s.env), /CALL MODE ON now \(.*\/call-mode:off/);
+  const again = hook({ session_id: 'n-1', prompt: envelope('/call-mode:on', 'Acme') }, s.env);
   assert.match(again, /already on/);
   assert.match(again, /Client on screen: Acme/);
 });
 
-test('/call-mode off ends the call and goes to the model for the summary', () => {
+test('/call-mode:off ends the call and goes to the model for the summary', () => {
   const s = sandbox();
-  hook({ session_id: 'o-1', prompt: '/call-mode Acme' }, s.env);
-  const out = hookRaw({ session_id: 'o-1', prompt: envelope('/call-mode', 'off') }, s.env);
+  hook({ session_id: 'o-1', prompt: '/call-mode:on Acme' }, s.env);
+  const out = hookRaw({ session_id: 'o-1', prompt: envelope('/call-mode:off', '') }, s.env);
   assert.equal(out.decision, undefined);
   assert.match(out.hookSpecificOutput.additionalContext, /CALL MODE OFF \(Acme\)/);
   assert.equal(fs.existsSync(path.join(s.stateDir, 'o-1.json')), false);
+  // plain form, and /call-mode:off when nothing is on
+  hook({ session_id: 'o-2', prompt: '/call-mode:on' }, s.env);
+  assert.match(hook({ session_id: 'o-2', prompt: '/call-mode:off' }, s.env), /CALL MODE OFF/);
+  assert.match(hook({ session_id: 'o-2', prompt: '/call-mode:off' }, s.env), /was not on/);
+});
+
+test('/call-mode:on with an off word still turns on (only the legacy command reads off words)', () => {
+  const s = sandbox();
+  assert.match(hook({ session_id: 'w-1', prompt: '/call-mode:on off' }, s.env), /CALL MODE ON now/);
 });
 
 test('only the marker asks for a one-line confirmation; with text the prompt is answered normally', () => {
@@ -220,6 +231,8 @@ test('other slash commands are not mistaken for /call-mode', () => {
   const s = sandbox();
   assert.equal(hook({ session_id: 'z-1', prompt: envelope('/call-modes', 'x') }, s.env), '');
   assert.equal(hook({ session_id: 'z-1', prompt: '/call-mode-x' }, s.env), '');
+  assert.equal(hook({ session_id: 'z-1', prompt: envelope('/call-mode:other', 'x') }, s.env), '');
+  assert.equal(hook({ session_id: 'z-1', prompt: '/other:on Acme' }, s.env), '');
   assert.equal(fs.existsSync(s.stateDir), false);
 });
 

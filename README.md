@@ -2,7 +2,7 @@
 
 A Claude Code plugin for when your screen is shared with a client.
 
-Type `/call-mode Acme` and, until you type `/call-mode off`, every prompt you send carries a reminder to Claude: the client is reading the chat, so prices, hours, negotiation and other internal matters stay out of it. Claude holds them back and gives you a short summary when the call ends, together with the call's start, end and duration (taken from the clock, not from Claude's memory).
+Type `/call-mode:on Acme` and, until you type `/call-mode:off`, every prompt you send carries a reminder to Claude: the client is reading the chat, so prices, hours, negotiation and other internal matters stay out of it. Claude holds them back and gives you a short summary when the call ends, together with the call's start, end and duration (taken from the clock, not from Claude's memory).
 
 An optional status line badge shows `[CALL: Acme]` while the mode is on.
 
@@ -20,15 +20,15 @@ Inside Claude Code:
 /plugin install call-mode@yamirenato
 ```
 
-That's it. Try it: send `/call-mode Test`, then any message, then `/call-mode off`.
+That's it. Try it: send `/call-mode:on Test`, then any message, then `/call-mode:off`.
 
 ## Usage
 
 | You type | What happens |
 |---|---|
-| `/call-mode` | Call mode on. The rules ride along with every prompt from now on. |
-| `/call-mode Acme` | Same, with the client's name (shown in the badge). |
-| `/call-mode off` | Call mode off (`end` and `stop` work too; see `commandOff`). Claude reports start, end, duration and a summary of what it held back. |
+| `/call-mode:on` | Call mode on. The rules ride along with every prompt from now on. |
+| `/call-mode:on Acme` | Same, with the client's name (shown in the badge). |
+| `/call-mode:off` | Call mode off. Claude reports start, end, duration and a summary of what it held back. |
 
 Turning it on is cheap: Claude only replies with a one-line confirmation.
 
@@ -46,7 +46,6 @@ Optional. Create `~/.claude/call-mode.json` (or `$CLAUDE_CONFIG_DIR/call-mode.js
 {
   "start": ["call mode"],
   "end": ["end call"],
-  "commandOff": ["off", "end", "stop"],
   "rules": [
     "CALL MODE ACTIVE: the user's screen is being shared with a client. The client can read everything you write in the chat.",
     "- NEVER in the chat: prices, rates, hours spent, budget, negotiation."
@@ -62,7 +61,6 @@ Optional. Create `~/.claude/call-mode.json` (or `$CLAUDE_CONFIG_DIR/call-mode.js
 | Field | Meaning |
 |---|---|
 | `start` / `end` | Marker phrases, without brackets. Letters, digits, spaces, `-` and `_` only. Up to 5 each. |
-| `commandOff` | Words that end the call after `/call-mode` (e.g. add `"fim"` for Portuguese). Up to 10. |
 | `rules` | Lines sent to Claude on every prompt while the mode is on. Write them in your language. |
 | `onEnd` | What Claude should do when the call ends. |
 | `label` | Badge text (`[CALL: Acme]`). |
@@ -109,12 +107,12 @@ Your command gets the same input it always did; its output is shown after the ba
 ## Limitations
 
 - `UserPromptSubmit` hooks don't run in the VS Code / Cursor extension (a known Claude Code issue). Use the terminal.
-- `/clear` starts a new session, so it silently turns call mode off (the badge disappears). Run `/call-mode` again after clearing.
+- `/clear` starts a new session, so it silently turns call mode off (the badge disappears). Run `/call-mode:on` again after clearing.
 - The rules are a strong reminder, not a filter: Claude follows them, but nothing blocks text from reaching the screen. Keep an eye on it.
 
 ## How it works
 
-- `dist/hook.js` is a `UserPromptSubmit` hook. On `/call-mode` or a start marker it writes `{ client, start }` to `~/.claude/state/call-mode/<session_id>.json`; while that file exists it adds the rules as `additionalContext`; on `/call-mode off` or the end marker it deletes the file and reports the duration. `commands/call-mode.md` only exists so `/call-mode` shows up in the command menu; the hook does the work.
+- `dist/hook.js` is a `UserPromptSubmit` hook. On `/call-mode:on` or a start marker it writes `{ client, start }` to `~/.claude/state/call-mode/<session_id>.json`; while that file exists it adds the rules as `additionalContext`; on `/call-mode:off` or the end marker it deletes the file and reports the duration. `commands/on.md` and `commands/off.md` only exist so the commands show up in the menu; the hook does the work. (Plugin commands are always prefixed with the plugin name, hence `call-mode:`.)
 - `dist/statusline.js` reads the same file, using the `session_id` Claude Code sends on stdin.
 - The hook always exits 0 and gives up after 2 seconds, so it can never block your prompt. Session ids are validated before becoming file names, state is written atomically with `0600` permissions, symlinks are refused, and text from disk is stripped of control characters before it reaches your terminal. When a call starts, state older than 14 days is cleaned up.
 

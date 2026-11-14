@@ -26,19 +26,31 @@ function duration(ms: number): string {
   return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
 }
 
-// Claude Code hands slash commands to hooks as an envelope:
-//   <command-name>/call-mode</command-name> <command-args>Acme</command-args>
-// (plugin commands may also come namespaced as /call-mode:call-mode).
-// The plain "/call-mode Acme" form is accepted too.
-function slashCommand(prompt: string): { args: string } | null {
+// Plugin commands are namespaced by the plugin name: /call-mode:on and /call-mode:off.
+// Claude Code hands them to hooks as an envelope:
+//   <command-name>/call-mode:on</command-name> <command-args>Acme</command-args>
+// The plain "/call-mode:on Acme" form is accepted too, and so is the 0.2 command
+// (/call-mode or /call-mode:call-mode, where an off word in the args ends the call).
+type Command = { kind: 'on' | 'off' | 'legacy'; args: string };
+
+function commandKind(name: string): Command['kind'] | null {
+  const m = /^\/(?:call-mode:(on|off|call-mode)|call-mode)$/i.exec(name);
+  if (!m) return null;
+  const sub = (m[1] || '').toLowerCase();
+  return sub === 'on' ? 'on' : sub === 'off' ? 'off' : 'legacy';
+}
+
+function slashCommand(prompt: string): Command | null {
   const name = /<command-name>\s*([^<\s]+)\s*<\/command-name>/.exec(prompt);
   if (name) {
-    if (!/^\/(?:call-mode:)?call-mode$/i.test(name[1])) return null;
+    const kind = commandKind(name[1]);
+    if (!kind) return null;
     const args = /<command-args>\s*([^<]*?)\s*<\/command-args>/.exec(prompt);
-    return { args: args ? args[1].trim() : '' };
+    return { kind, args: args ? args[1].trim() : '' };
   }
-  const plain = /^\s*\/(?:call-mode:)?call-mode(?:\s+([^\n]*))?\s*$/i.exec(prompt);
-  return plain ? { args: (plain[1] || '').trim() } : null;
+  const plain = /^\s*(\/\S+)(?:\s+([^\n]*))?\s*$/.exec(prompt);
+  const kind = plain ? commandKind(plain[1]) : null;
+  return kind ? { kind, args: (plain?.[2] || '').trim() } : null;
 }
 
 export interface Result {
@@ -60,7 +72,8 @@ export function handle(input: { prompt?: unknown; session_id?: unknown }, now = 
   const command = slashCommand(prompt);
   const on = command ? null : prompt.match(markerPattern(config.start, true));
   const off = command
-    ? config.commandOff.some((w) => w.toLowerCase() === command.args.toLowerCase())
+    ? command.kind === 'off' ||
+      (command.kind === 'legacy' && config.commandOff.some((w) => w.toLowerCase() === command.args.toLowerCase()))
     : markerPattern(config.end, false).test(prompt);
 
   if (off) {
@@ -74,7 +87,7 @@ export function handle(input: { prompt?: unknown; session_id?: unknown }, now = 
     };
   }
 
-  // "/call-mode [client]" or a start marker turns the mode on.
+  // "/call-mode:on [client]" or a start marker turns the mode on.
   // When the prompt is only that, Claude just confirms in one line (cheap, and
   // nothing odd on a shared screen; blocking the prompt would show a warning banner).
   if (command || on) {
@@ -86,7 +99,7 @@ export function handle(input: { prompt?: unknown; session_id?: unknown }, now = 
       if (!writeState(session, state)) {
         out.push('WARNING: could not save call mode state (the status line badge will not show). The rules still apply to this message; ask the user to turn call mode on again.');
       }
-      out.push(`CALL MODE ON now (${clock(now, config)})${client ? ` with ${client}` : ''}. Active until the user sends /call-mode ${config.commandOff[0]} or ${endTag}.`);
+      out.push(`CALL MODE ON now (${clock(now, config)})${client ? ` with ${client}` : ''}. Active until the user sends /call-mode:off or ${endTag}.`);
       if (only) out.push(`This prompt only turned call mode on: reply with one short line confirming it (e.g. "Call mode on at ${clock(now, config)}${client ? ` with ${client}` : ''}."), nothing else.`);
     } else {
       if (client && !state.client) {
