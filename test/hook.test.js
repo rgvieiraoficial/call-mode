@@ -204,6 +204,18 @@ test('only the marker asks for a one-line confirmation; with text the prompt is 
   assert.doesNotMatch(out, /reply with one short line/);
 });
 
+test('config: commandOff sets the words that end the call via the command', () => {
+  const s = sandbox();
+  fs.writeFileSync(s.configFile, JSON.stringify({ commandOff: ['off', 'fim'] }));
+  hook({ session_id: 'f-1', prompt: '/call-mode Ana' }, s.env);
+  assert.match(hook({ session_id: 'f-1', prompt: envelope('/call-mode', 'Fim') }, s.env), /CALL MODE OFF \(Ana\)/);
+  assert.equal(fs.existsSync(path.join(s.stateDir, 'f-1.json')), false);
+  // without it, the defaults still end the call
+  const d = sandbox();
+  hook({ session_id: 'f-2', prompt: '/call-mode Ana' }, d.env);
+  assert.match(hook({ session_id: 'f-2', prompt: '/call-mode stop' }, d.env), /CALL MODE OFF/);
+});
+
 test('other slash commands are not mistaken for /call-mode', () => {
   const s = sandbox();
   assert.equal(hook({ session_id: 'z-1', prompt: envelope('/call-modes', 'x') }, s.env), '');

@@ -28,7 +28,7 @@ That's it. Try it: send `/call-mode Test`, then any message, then `/call-mode of
 |---|---|
 | `/call-mode` | Call mode on. The rules ride along with every prompt from now on. |
 | `/call-mode Acme` | Same, with the client's name (shown in the badge). |
-| `/call-mode off` | Call mode off. Claude reports start, end, duration and a summary of what it held back. |
+| `/call-mode off` | Call mode off (`end` and `stop` work too; see `commandOff`). Claude reports start, end, duration and a summary of what it held back. |
 
 Turning it on is cheap: Claude only replies with a one-line confirmation.
 
@@ -46,6 +46,7 @@ Optional. Create `~/.claude/call-mode.json` (or `$CLAUDE_CONFIG_DIR/call-mode.js
 {
   "start": ["call mode"],
   "end": ["end call"],
+  "commandOff": ["off", "end", "stop"],
   "rules": [
     "CALL MODE ACTIVE: the user's screen is being shared with a client. The client can read everything you write in the chat.",
     "- NEVER in the chat: prices, rates, hours spent, budget, negotiation."
@@ -61,6 +62,7 @@ Optional. Create `~/.claude/call-mode.json` (or `$CLAUDE_CONFIG_DIR/call-mode.js
 | Field | Meaning |
 |---|---|
 | `start` / `end` | Marker phrases, without brackets. Letters, digits, spaces, `-` and `_` only. Up to 5 each. |
+| `commandOff` | Words that end the call after `/call-mode` (e.g. add `"fim"` for Portuguese). Up to 10. |
 | `rules` | Lines sent to Claude on every prompt while the mode is on. Write them in your language. |
 | `onEnd` | What Claude should do when the call ends. |
 | `label` | Badge text (`[CALL: Acme]`). |

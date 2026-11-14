@@ -33,6 +33,7 @@ exports.DEFAULT_CONFIG = {
     onEnd: 'The screen is private again: give a short summary of what you held back during the call (internal topics, time, pending decisions).',
     start: ['call mode'],
     end: ['end call'],
+    commandOff: ['off', 'end', 'stop'],
     label: 'CALL',
     color: 39,
     staleHours: 12,
@@ -90,6 +91,7 @@ function loadConfig() {
     config.rules = cleanList(user.rules, 40, 1000) ?? config.rules;
     config.start = cleanList(user.start, 5, 40, marker) ?? config.start;
     config.end = cleanList(user.end, 5, 40, marker) ?? config.end;
+    config.commandOff = cleanList(user.commandOff, 10, 20, /^[\p{L}\p{N}_-]+$/u) ?? config.commandOff;
     if (typeof user.onEnd === 'string')
         config.onEnd = clean(user.onEnd, 1000);
     if (typeof user.label === 'string' && clean(user.label, 20))
