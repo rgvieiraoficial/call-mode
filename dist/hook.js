@@ -24,7 +24,6 @@ function duration(ms) {
     const m = total % 60;
     return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
 }
-const OFF_ARGS = /^(?:off|end|stop)$/i;
 // Claude Code hands slash commands to hooks as an envelope:
 //   <command-name>/call-mode</command-name> <command-args>Acme</command-args>
 // (plugin commands may also come namespaced as /call-mode:call-mode).
@@ -54,7 +53,9 @@ function handle(input, now = new Date()) {
     const out = [];
     const command = slashCommand(prompt);
     const on = command ? null : prompt.match(markerPattern(config.start, true));
-    const off = command ? OFF_ARGS.test(command.args) : markerPattern(config.end, false).test(prompt);
+    const off = command
+        ? config.commandOff.some((w) => w.toLowerCase() === command.args.toLowerCase())
+        : markerPattern(config.end, false).test(prompt);
     if (off) {
         if (!state)
             return { context: `The user ended call mode, but it was not on in this session.` };
@@ -77,7 +78,7 @@ function handle(input, now = new Date()) {
             if (!(0, core_1.writeState)(session, state)) {
                 out.push('WARNING: could not save call mode state (the status line badge will not show). The rules still apply to this message; ask the user to turn call mode on again.');
             }
-            out.push(`CALL MODE ON now (${clock(now, config)})${client ? ` with ${client}` : ''}. Active until the user sends /call-mode off or ${endTag}.`);
+            out.push(`CALL MODE ON now (${clock(now, config)})${client ? ` with ${client}` : ''}. Active until the user sends /call-mode ${config.commandOff[0]} or ${endTag}.`);
             if (only)
                 out.push(`This prompt only turned call mode on: reply with one short line confirming it (e.g. "Call mode on at ${clock(now, config)}${client ? ` with ${client}` : ''}."), nothing else.`);
         }
