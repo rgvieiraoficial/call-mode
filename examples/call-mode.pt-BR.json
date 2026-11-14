@@ -1,7 +1,6 @@
 {
   "start": ["modo call", "call mode"],
   "end": ["fim call", "fim da call", "end call"],
-  "commandOff": ["off", "fim", "sair"],
   "label": "CALL",
   "color": 39,
   "staleHours": 12,
