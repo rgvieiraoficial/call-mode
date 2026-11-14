@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
-const { HOOK, sandbox, hook, run } = require('./helpers');
+const { HOOK, sandbox, hook, hookRaw, run } = require('./helpers');
 
 const ESC = String.fromCharCode(27);
 const BOM = String.fromCharCode(0xfeff);
@@ -26,7 +26,7 @@ test('repeats the rules on every prompt while on, only in that session', () => {
 
 test('accepts hyphen, underscore and case variations of the markers', () => {
   const s = sandbox();
-  assert.match(hook({ session_id: 'v-1', prompt: '[CALL_MODE]' }, s.env), /CALL MODE ON/);
+  assert.match(hook({ session_id: 'v-1', prompt: '[CALL_MODE] hi' }, s.env), /CALL MODE ON/);
   const out = hook({ session_id: 'v-1', prompt: '[end-call]' }, s.env);
   assert.match(out, /CALL MODE OFF/);
   assert.match(out, /= \d+min/);
@@ -152,16 +152,67 @@ test('config: custom markers, rules and end text', () => {
   fs.writeFileSync(s.configFile, JSON.stringify({
     start: ['modo call'], end: ['fim call'], rules: ['REGRA X'], onEnd: 'RESUMO Y', locale: 'pt-BR',
   }));
-  assert.match(hook({ session_id: 'k-1', prompt: '[modo-call: Ana]' }, s.env), /REGRA X/);
+  assert.match(hook({ session_id: 'k-1', prompt: '[modo-call: Ana] oi' }, s.env), /REGRA X/);
   assert.equal(hook({ session_id: 'k-2', prompt: '[call mode]' }, s.env), '');
   assert.match(hook({ session_id: 'k-1', prompt: '[fim call]' }, s.env), /RESUMO Y/);
+});
+
+const envelope = (name, args) =>
+  `<command-message>${name.slice(1)}</command-message>\n<command-name>${name}</command-name>\n<command-args>${args}</command-args>`;
+
+test('/call-mode turns on and blocks the prompt (no model call)', () => {
+  const s = sandbox();
+  for (const [id, prompt] of [
+    ['e-1', envelope('/call-mode', 'Acme')],
+    ['e-2', envelope('/call-mode:call-mode', 'Acme')],
+    ['e-3', '/call-mode Acme'],
+  ]) {
+    const out = hookRaw({ session_id: id, prompt }, s.env);
+    assert.equal(out.decision, 'block', id);
+    assert.match(out.reason, /Call mode on .* with Acme/, id);
+    assert.equal(out.hookSpecificOutput, undefined, id);
+    const state = JSON.parse(fs.readFileSync(path.join(s.stateDir, `${id}.json`), 'utf8'));
+    assert.equal(state.client, 'Acme', id);
+  }
+});
+
+test('/call-mode without a name, and again while on', () => {
+  const s = sandbox();
+  assert.match(hookRaw({ session_id: 'n-1', prompt: envelope('/call-mode', '') }, s.env).reason, /Call mode on \(/);
+  const again = hookRaw({ session_id: 'n-1', prompt: envelope('/call-mode', 'Acme') }, s.env);
+  assert.equal(again.decision, 'block');
+  assert.match(again.reason, /already on .*Acme/);
+});
+
+test('/call-mode off ends the call and goes to the model for the summary', () => {
+  const s = sandbox();
+  hook({ session_id: 'o-1', prompt: '/call-mode Acme' }, s.env);
+  const out = hookRaw({ session_id: 'o-1', prompt: envelope('/call-mode', 'off') }, s.env);
+  assert.equal(out.decision, undefined);
+  assert.match(out.hookSpecificOutput.additionalContext, /CALL MODE OFF \(Acme\)/);
+  assert.equal(fs.existsSync(path.join(s.stateDir, 'o-1.json')), false);
+});
+
+test('a prompt that is only the start marker is blocked; with text it is not', () => {
+  const s = sandbox();
+  assert.equal(hookRaw({ session_id: 'm-1', prompt: '  [call mode: Acme] ' }, s.env).decision, 'block');
+  const out = hookRaw({ session_id: 'm-2', prompt: '[call mode: Acme] look at this bug' }, s.env);
+  assert.equal(out.decision, undefined);
+  assert.match(out.hookSpecificOutput.additionalContext, /CALL MODE ON now/);
+});
+
+test('other slash commands are not mistaken for /call-mode', () => {
+  const s = sandbox();
+  assert.equal(hook({ session_id: 'z-1', prompt: envelope('/call-modes', 'x') }, s.env), '');
+  assert.equal(hook({ session_id: 'z-1', prompt: '/call-mode-x' }, s.env), '');
+  assert.equal(fs.existsSync(s.stateDir), false);
 });
 
 test('config: broken, oversized or wrongly typed config falls back to defaults', () => {
   const s = sandbox();
   for (const content of ['{nope', 'x'.repeat(20000), JSON.stringify({ rules: 'not a list', start: ['bad]marker'] })]) {
     fs.writeFileSync(s.configFile, content);
-    assert.match(hook({ session_id: 'd-1', prompt: '[call mode]' }, s.env), /CALL MODE ACTIVE/);
+    assert.match(hook({ session_id: 'd-1', prompt: '[call mode] hi' }, s.env), /CALL MODE ACTIVE/);
     hook({ session_id: 'd-1', prompt: '[end call]' }, s.env);
   }
 });

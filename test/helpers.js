@@ -24,12 +24,17 @@ function run(script, input, env, args = []) {
   return { code: result.status, stdout: result.stdout || '' };
 }
 
-// Returns the additionalContext text, or '' when the hook printed nothing.
-function hook(input, env) {
+// Returns the parsed hook output ({} when the hook printed nothing).
+function hookRaw(input, env) {
   const { code, stdout } = run(HOOK, input, env);
   if (code !== 0) throw new Error(`hook exited ${code}`);
-  if (!stdout.trim()) return '';
-  return JSON.parse(stdout).hookSpecificOutput.additionalContext;
+  return stdout.trim() ? JSON.parse(stdout) : {};
+}
+
+// Returns the additionalContext text, or the block reason, or ''.
+function hook(input, env) {
+  const out = hookRaw(input, env);
+  return out.hookSpecificOutput?.additionalContext ?? out.reason ?? '';
 }
 
 function statusline(input, env, args) {
@@ -38,4 +43,4 @@ function statusline(input, env, args) {
   return stdout;
 }
 
-module.exports = { HOOK, STATUSLINE, sandbox, run, hook, statusline };
+module.exports = { HOOK, STATUSLINE, sandbox, run, hook, hookRaw, statusline };

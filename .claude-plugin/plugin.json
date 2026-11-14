@@ -1,6 +1,6 @@
 {
   "name": "call-mode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Screen-sharing guard: while a client watches your screen, Claude keeps prices, hours and other internal matters out of the chat.",
   "author": {
     "name": "yamirenato",

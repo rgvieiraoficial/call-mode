@@ -24,27 +24,65 @@ function duration(ms) {
     const m = total % 60;
     return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
 }
+const OFF_ARGS = /^(?:off|end|stop)$/i;
+// Claude Code hands slash commands to hooks as an envelope:
+//   <command-name>/call-mode</command-name> <command-args>Acme</command-args>
+// (plugin commands may also come namespaced as /call-mode:call-mode).
+// The plain "/call-mode Acme" form is accepted too.
+function slashCommand(prompt) {
+    const name = /<command-name>\s*([^<\s]+)\s*<\/command-name>/.exec(prompt);
+    if (name) {
+        if (!/^\/(?:call-mode:)?call-mode$/i.test(name[1]))
+            return null;
+        const args = /<command-args>\s*([^<]*?)\s*<\/command-args>/.exec(prompt);
+        return { args: args ? args[1].trim() : '' };
+    }
+    const plain = /^\s*\/(?:call-mode:)?call-mode(?:\s+([^\n]*))?\s*$/i.exec(prompt);
+    return plain ? { args: (plain[1] || '').trim() } : null;
+}
 function handle(input, now = new Date()) {
     const prompt = String(input?.prompt ?? '');
     // Unattended scheduled runs are never in a call.
     if (/<scheduled-task\b/.test(prompt))
-        return '';
+        return {};
     const session = String(input?.session_id ?? '');
     if (!core_1.SESSION_ID.test(session))
-        return '';
+        return {};
     const config = (0, core_1.loadConfig)();
     const endTag = `[${config.end[0]}]`;
     let state = (0, core_1.readState)(session);
     const out = [];
-    const on = prompt.match(markerPattern(config.start, true));
-    const off = markerPattern(config.end, false).test(prompt);
+    const command = slashCommand(prompt);
+    const on = command ? null : prompt.match(markerPattern(config.start, true));
+    const off = command ? OFF_ARGS.test(command.args) : markerPattern(config.end, false).test(prompt);
     if (off) {
         if (!state)
-            return `The user sent ${endTag}, but call mode was not on in this session.`;
+            return { context: `The user ended call mode, but it was not on in this session.` };
         (0, core_1.deleteState)(session);
         const start = new Date(state.start);
-        return (`CALL MODE OFF (${state.client || 'client'}). Call: ${clock(start, config)} to ${clock(now, config)} = ${duration(now.getTime() - start.getTime())}.\n` +
-            config.onEnd);
+        return {
+            context: `CALL MODE OFF (${state.client || 'client'}). Call: ${clock(start, config)} to ${clock(now, config)} = ${duration(now.getTime() - start.getTime())}.\n` +
+                config.onEnd,
+        };
+    }
+    // "/call-mode [client]" or a prompt that is only the start marker: turn on and
+    // block the prompt, so the model is not called and no tokens are spent.
+    if (command || (on && on[0] === prompt.trim())) {
+        const client = (0, core_1.clean)(command ? command.args : on?.[1], 40);
+        if (state) {
+            if (client && !state.client) {
+                state.client = client;
+                (0, core_1.writeState)(session, state);
+            }
+            return { block: `Call mode is already on (since ${clock(new Date(state.start), config)}${state.client ? `, ${state.client}` : ''}).` };
+        }
+        (0, core_1.sweepOld)(now.getTime());
+        if (!(0, core_1.writeState)(session, { client, start: now.toISOString() })) {
+            return { block: 'Call mode: could not save its state, so it is NOT on. Try again.' };
+        }
+        return {
+            block: `Call mode on (${clock(now, config)})${client ? ` with ${client}` : ''}. Your next prompts carry the rules. End with /call-mode off or ${endTag}.`,
+        };
     }
     if (on) {
         const client = (0, core_1.clean)(on[1], 40);
@@ -73,7 +111,7 @@ function handle(input, now = new Date()) {
             out.push(`Note: call mode has been on for ${duration(elapsed)}; the user may have forgotten ${endTag}. Ask once, neutrally, whether the call is still going.`);
         }
     }
-    return out.join('\n');
+    return out.length ? { context: out.join('\n') } : {};
 }
 function main() {
     let input = '';
@@ -86,18 +124,25 @@ function main() {
             return;
         done = true;
         clearTimeout(watchdog);
-        let text = '';
+        let result = {};
         try {
-            text = handle(JSON.parse(input.replace(core_1.LEADING_BOM, '')));
+            result = handle(JSON.parse(input.replace(core_1.LEADING_BOM, '')));
         }
         catch {
-            text = '';
+            result = {};
         }
-        if (!text)
+        let payload;
+        if (result.block) {
+            payload = JSON.stringify({ decision: 'block', reason: result.block });
+        }
+        else if (result.context) {
+            payload = JSON.stringify({
+                hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: result.context },
+            });
+        }
+        else {
             return exit();
-        const payload = JSON.stringify({
-            hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text },
-        });
+        }
         try {
             process.stdout.write(payload + '\n', exit);
         }
